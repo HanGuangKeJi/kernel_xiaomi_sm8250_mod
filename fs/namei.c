@@ -2075,6 +2075,11 @@ static int walk_component(struct nameidata *nd, int flags)
 	if (unlikely(err <= 0)) {
 		if (err < 0)
 			return err;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		if (nd->state & ND_STATE_LOOKUP_LAST) {
+			nd->flags |= ND_FLAGS_LOOKUP_LAST;
+		}
+#endif
 		path.dentry = lookup_slow(&nd->last, nd->path.dentry,
 					  nd->flags);
 		if (IS_ERR(path.dentry))
@@ -2336,6 +2341,9 @@ static inline u64 hash_name(const void *salt, const char *name)
 static int link_path_walk(const char *name, struct nameidata *nd)
 {
 	int err;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	struct dentry *dentry;
+#endif
 
 	if (IS_ERR(name))
 		return PTR_ERR(name);
@@ -2352,6 +2360,14 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 		err = may_lookup(nd);
 		if (err)
 			return err;
+
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		dentry = nd->path.dentry;
+		if (dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
+			// return -ENOENT here since it is walking the sub path of sus path
+			return -ENOENT;
+		}
+#endif
 
 		hash_len = hash_name(nd->path.dentry, name);
 
@@ -2377,6 +2393,23 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 				hash_len = this.hash_len;
 				name = this.name;
 			}
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+			if (nd->state & ND_STATE_LAST_SDCARD_SUS_PATH) {
+				// return -ENOENT here since it is walking the sub path of sus sdcard path
+				return -ENOENT;
+			}
+			if (parent->d_inode) {
+				if (susfs_is_base_dentry_android_data_dir(parent) &&
+					susfs_is_sus_android_data_d_name_found(name))
+				{
+					nd->state |= ND_STATE_LAST_SDCARD_SUS_PATH;
+				} else if (susfs_is_base_dentry_sdcard_dir(parent) &&
+						   susfs_is_sus_sdcard_d_name_found(name))
+				{
+					nd->state |= ND_STATE_LAST_SDCARD_SUS_PATH;
+				}
+			}
+#endif
 		}
 
 		nd->last.hash_len = hash_len;
@@ -2433,12 +2466,6 @@ OK:
 			}
 			return -ENOTDIR;
 		}
-#ifdef CONFIG_KSU_SUSFS_SUS_PATH
-		// we deal with sus sub path here
-		if (nd->inode && unlikely(nd->inode->i_state & INODE_STATE_SUS_PATH) && likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)) {
-			return 0;
-		}
-#endif
 	}
 }
 
@@ -2542,6 +2569,9 @@ static inline int lookup_last(struct nameidata *nd)
 {
 	if (nd->last_type == LAST_NORM && nd->last.name[nd->last.len])
 		nd->flags |= LOOKUP_FOLLOW | LOOKUP_DIRECTORY;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	nd->state |= ND_STATE_LOOKUP_LAST;
+#endif
 
 	nd->flags &= ~LOOKUP_PARENT;
 	return walk_component(nd, 0);
