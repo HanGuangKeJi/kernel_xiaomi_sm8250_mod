@@ -127,6 +127,13 @@ struct st_susfs_open_redirect_hlist {
 };
 #endif
 
+/* sus_su */
+#ifdef CONFIG_KSU_SUSFS_SUS_SU
+struct st_sus_su {
+	int         mode;
+};
+#endif
+
 /***********************/
 /* FORWARD DECLARATION */
 /***********************/
