@@ -29,7 +29,7 @@
 struct st_susfs_sus_path {
 	unsigned long                    target_ino;
 	char                             target_pathname[SUSFS_MAX_LEN_PATHNAME];
-	unsigned int					 i_uid;
+	unsigned int			 i_uid;
 };
 
 struct st_susfs_sus_path_list {
