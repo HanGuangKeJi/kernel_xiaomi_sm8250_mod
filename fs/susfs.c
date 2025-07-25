@@ -13,6 +13,7 @@
 #include <linux/version.h>
 #include <linux/fdtable.h>
 #include <linux/statfs.h>
+#include <linux/random.h>
 #include <linux/susfs.h>
 #include "mount.h"
 
@@ -34,32 +35,28 @@ bool susfs_is_log_enabled __read_mostly = true;
 
 /* sus_path */
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-static DEFINE_HASHTABLE(SUS_PATH_HLIST, 10);
-static int susfs_update_sus_path_inode(char *target_pathname) {
-	struct path p;
+static LIST_HEAD(LH_SUS_PATH_ANDROID_DATA);
+static LIST_HEAD(LH_SUS_PATH_SDCARD);
+static struct st_android_data_path android_data_path = {0};
+static struct st_sdcard_path sdcard_path = {0};
+const struct qstr susfs_fake_qstr_name = QSTR_INIT("..!5!u!S!", 9); // used to re-test the dcache lookup, make sure you don't have file named like this!!
+
+int susfs_set_i_state_on_external_dir(char __user* user_info, int cmd) {
+	struct path path;
+	int err = 0;
 	struct inode *inode = NULL;
-	const char *dev_type;
-
-	if (kern_path(target_pathname, LOOKUP_FOLLOW, &p)) {
-		SUSFS_LOGE("Failed opening file '%s'\n", target_pathname);
-		return 1;
+	char *info = kmalloc(SUSFS_MAX_LEN_PATHNAME, GFP_KERNEL);
+	char *tmp_buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	char *resolved_pathname = NULL;
+	
+	if (!info) {
+		err = -ENOMEM;
+		return err;
 	}
-
-	// - We don't allow paths of which filesystem type is "tmpfs" or "fuse".
-	//   For tmpfs, because its starting inode->i_ino will begin with 1 again,
-	//   so it will cause wrong comparison in function susfs_sus_ino_for_filldir64()
-	//   For fuse, which is almost storage related, sus_path should not handle any paths of
-	//   which filesystem is "fuse" as well, since app can write to "fuse" and lookup files via
-	//   like binder / system API (you can see the uid is changed to 1000)/
-	// - so sus_path should be applied only on read-only filesystem like "erofs" or "f2fs", but not "tmpfs" or "fuse",
-	//   people may rely on HMA for /data isolation instead.
-	dev_type = p.mnt->mnt_sb->s_type->name;
-	if (!strcmp(dev_type, "tmpfs") ||
-		!strcmp(dev_type, "fuse")) {
-		SUSFS_LOGE("target_pathname: '%s' cannot be added since its filesystem type is '%s'\n",
-						target_pathname, dev_type);
-		path_put(&p);
-		return 1;
+	
+	if (!tmp_buf) {
+		err = -ENOMEM;
+		goto out_kfree_info;
 	}
 
 	inode = d_inode(p.dentry);
