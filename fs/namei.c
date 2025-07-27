@@ -1766,6 +1766,7 @@ static int lookup_fast(struct nameidata *nd,
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 		if (is_nd_state_lookup_last_and_open_last && dentry && !IS_ERR(dentry) && dentry->d_inode) {
 			if (susfs_is_inode_sus_path(dentry->d_inode)) {
+				dput(dentry);
 				dentry = __d_lookup_rcu(parent, &susfs_fake_qstr_name, &backup_next_seq);
 			}
 		}
@@ -1835,6 +1836,7 @@ skip_orig_flow1:
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 		if (is_nd_state_lookup_last_and_open_last && dentry && !IS_ERR(dentry) && dentry->d_inode) {
 			if (susfs_is_inode_sus_path(dentry->d_inode)) {
+				dput(dentry);
 				dentry = __d_lookup(parent, &susfs_fake_qstr_name);
 			}
 		}
@@ -1933,6 +1935,7 @@ retry:
 	if (is_nd_flags_lookup_last && !found_sus_path) {
 		if (dentry && !IS_ERR(dentry) && dentry->d_inode) {
 			if (susfs_is_inode_sus_path(dentry->d_inode)) {
+				dput(dentry);
 				dentry = d_alloc_parallel(dir, &susfs_fake_qstr_name, &sus_wq);
 				found_sus_path = true;
 				goto retry;
@@ -2361,7 +2364,8 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 		dentry = nd->path.dentry;
 		if (dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
-			// return -ENOENT here since it is walking the sub path of sus path
+			// - No need to dput() here
+			// - return -ENOENT here since it is walking the sub path of sus path
 			return -ENOENT;
 		}
 #endif
@@ -2392,6 +2396,7 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 			}
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 			if (nd->state & ND_STATE_LAST_SDCARD_SUS_PATH) {
+				// - No need to dput() here
 				// return -ENOENT here since it is walking the sub path of sus sdcard path
 				return -ENOENT;
 			}
@@ -2656,7 +2661,7 @@ static int filename_lookup(int dfd, struct filename *name, unsigned flags,
 		audit_inode(name, path->dentry, flags & LOOKUP_PARENT);
 	restore_nameidata();
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	if (!retval && path->dentry->d_inode && unlikely(path->dentry->d_inode->i_state & INODE_STATE_SUS_PATH) && likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)) {
+	if (!retval && path->dentry->d_inode && unlikely(path->dentry->d_inode->i_mapping->flags & BIT_SUS_PATH)) {
 		putname(name);
 		return -ENOENT;
 	}
@@ -3143,7 +3148,7 @@ static int may_delete(struct vfsmount *mnt, struct inode *dir, struct dentry *vi
 	if (IS_APPEND(dir))
 		return -EPERM;
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	if (unlikely(inode->i_state & INODE_STATE_SUS_PATH) && likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)) {
+	if (unlikely(inode->i_mapping->flags & BIT_SUS_PATH)) {
 		return -ENOENT;
 	}
 #endif
@@ -3182,7 +3187,7 @@ static inline int may_create(struct vfsmount *mnt, struct inode *dir, struct den
 	struct user_namespace *s_user_ns;
 	audit_inode_child(dir, child, AUDIT_TYPE_CHILD_CREATE);
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	if (child->d_inode && unlikely(child->d_inode->i_state & INODE_STATE_SUS_PATH) && likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)) {
+	if (child->d_inode && unlikely(child->d_inode->i_mapping->flags & BIT_SUS_PATH)) {
 		error = inode_permission(dir, MAY_WRITE | MAY_EXEC);
 		if (error) {
 			return error;
@@ -3320,7 +3325,7 @@ static int may_open(const struct path *path, int acc_mode, int flag)
 		return -ENOENT;
 
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	if (unlikely(inode->i_state & INODE_STATE_SUS_PATH) && likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)) {
+	if (unlikely(inode->i_mapping->flags & BIT_SUS_PATH)) {
 		return -ENOENT;
 	}
 #endif
