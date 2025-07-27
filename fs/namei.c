@@ -1024,7 +1024,7 @@ static inline int may_follow_link(struct nameidata *nd)
 	kuid_t puid;
 
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	if (nd->inode && unlikely(nd->inode->i_state & INODE_STATE_SUS_PATH) && likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)) {
+	if (nd->inode && unlikely(nd->inode->i_mapping->flags & BIT_SUS_PATH)) {
 		return -ENOENT;
 	}
 #endif
@@ -1107,7 +1107,7 @@ static int may_linkat(struct path *link)
 	struct inode *inode = link->dentry->d_inode;
 
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	if (link->dentry->d_inode && unlikely(link->dentry->d_inode->i_state & INODE_STATE_SUS_PATH) && likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)) {
+	if (link->dentry->d_inode && unlikely(link->dentry->d_inode->i_mapping->flags & BIT_SUS_PATH)) {
 		return -ENOENT;
 	}
 #endif
@@ -1154,7 +1154,7 @@ static int may_create_in_sticky(umode_t dir_mode, kuid_t dir_uid,
 				struct inode * const inode)
 {
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	if (unlikely(inode->i_state & INODE_STATE_SUS_PATH) && likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)) {
+	if (unlikely(inode->i_mapping->flags & BIT_SUS_PATH)) {
 		return -ENOENT;
 	}
 #endif
@@ -1673,9 +1673,6 @@ static struct dentry *__lookup_hash(const struct qstr *name,
 		if (susfs_is_base_dentry_android_data_dir(base) &&
 			susfs_is_sus_android_data_d_name_found(name->name))
 		{
-			if (flags & (LOOKUP_CREATE | LOOKUP_EXCL)) {
-				return ERR_PTR(-EACCES);
-			}
 			dentry = lookup_dcache(&susfs_fake_qstr_name, base, flags);
 			found_sus_path = true;
 			goto retry;
