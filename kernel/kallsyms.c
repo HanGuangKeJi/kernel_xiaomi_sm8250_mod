@@ -158,26 +158,6 @@ static unsigned long kallsyms_sym_address(int idx)
 	return kallsyms_relative_base - 1 - kallsyms_offsets[idx];
 }
 
-#if defined(CONFIG_CFI_CLANG) && defined(CONFIG_THINLTO)
-/*
- * LLVM appends a hash to static function names when ThinLTO and CFI are
- * both enabled, which causes confusion and potentially breaks user space
- * tools, so we will strip the postfix from expanded symbol names.
- */
-static inline char *cleanup_symbol_name(char *s)
-{
-	char *res = NULL;
-
-	res = strrchr(s, '$');
-	if (res)
-		*res = '\0';
-
-	return res;
-}
-#else
-static inline char *cleanup_symbol_name(char *s) { return NULL; }
-#endif
-
 /* Lookup the address for this symbol. Returns 0 if not found. */
 unsigned long kallsyms_lookup_name(const char *name)
 {
@@ -189,9 +169,6 @@ unsigned long kallsyms_lookup_name(const char *name)
 		off = kallsyms_expand_symbol(off, namebuf, ARRAY_SIZE(namebuf));
 
 		if (strcmp(namebuf, name) == 0)
-			return kallsyms_sym_address(i);
-
-		if (cleanup_symbol_name(namebuf) && strcmp(namebuf, name) == 0)
 			return kallsyms_sym_address(i);
 	}
 	return module_kallsyms_lookup_name(name);
@@ -290,6 +267,30 @@ int kallsyms_lookup_size_offset(unsigned long addr, unsigned long *symbolsize,
 	return !!module_address_lookup(addr, symbolsize, offset, NULL, namebuf) ||
 	       !!__bpf_address_lookup(addr, symbolsize, offset, namebuf);
 }
+
+#ifdef CONFIG_CFI_CLANG
+/*
+ * LLVM appends .cfi to function names when CONFIG_CFI_CLANG is enabled,
+ * which causes confusion and potentially breaks user space tools, so we
+ * will strip the postfix from expanded symbol names.
+ */
+static inline void cleanup_symbol_name(char *s)
+{
+	char *res;
+
+#ifdef CONFIG_THINLTO
+	/* Filter out hashes from static functions */
+	res = strrchr(s, '$');
+	if (res)
+		*res = '\0';
+#endif
+	res = strrchr(s, '.');
+	if (res && !strcmp(res, ".cfi"))
+		*res = '\0';
+}
+#else
+static inline void cleanup_symbol_name(char *s) {}
+#endif
 
 /*
  * Lookup an address
@@ -656,18 +657,8 @@ static int s_show(struct seq_file *m, void *p)
 		seq_printf(m, "%px %c %s\t[%s]\n", value,
 			   type, iter->name, iter->module_name);
 	} else
-#ifndef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
 		seq_printf(m, "%px %c %s\n", value,
 			   iter->type, iter->name);
-#else
-	{
-		if (strstr(iter->name, "ksu_") || !strncmp(iter->name, "susfs_", 6) || !strncmp(iter->name, "ksud", 4)) {
-			return 0;
-		}
-		seq_printf(m, "%px %c %s\n", value,
-			   iter->type, iter->name);
-	}
-#endif
 	return 0;
 }
 
@@ -696,20 +687,19 @@ static inline int kallsyms_for_perf(void)
  * Otherwise, require CAP_SYSLOG (assuming kptr_restrict isn't set to
  * block even that).
  */
-bool kallsyms_show_value(const struct cred *cred)
+int kallsyms_show_value(void)
 {
 	switch (kptr_restrict) {
 	case 0:
 		if (kallsyms_for_perf())
-			return true;
+			return 1;
 	/* fallthrough */
 	case 1:
-		if (security_capable(cred, &init_user_ns, CAP_SYSLOG,
-				     CAP_OPT_NOAUDIT) == 0)
-			return true;
+		if (has_capability_noaudit(current, CAP_SYSLOG))
+			return 1;
 	/* fallthrough */
 	default:
-		return false;
+		return 0;
 	}
 }
 
@@ -726,11 +716,7 @@ static int kallsyms_open(struct inode *inode, struct file *file)
 		return -ENOMEM;
 	reset_iter(iter, 0);
 
-	/*
-	 * Instead of checking this on every s_show() call, cache
-	 * the result here at open time.
-	 */
-	iter->show_value = kallsyms_show_value(file->f_cred);
+	iter->show_value = kallsyms_show_value();
 	return 0;
 }
 
