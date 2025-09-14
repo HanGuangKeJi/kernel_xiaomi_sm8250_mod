@@ -29,7 +29,7 @@
 struct st_susfs_sus_path {
 	unsigned long                    target_ino;
 	char                             target_pathname[SUSFS_MAX_LEN_PATHNAME];
-	unsigned int			 i_uid;
+	unsigned int					 i_uid;
 };
 
 struct st_susfs_sus_path_list {
@@ -194,6 +194,7 @@ int susfs_sus_su(struct st_sus_su* __user user_info);
 #endif
 
 int susfs_get_enabled_features(char __user* buf, size_t bufsize);
+void susfs_set_avc_log_spoofing(bool enabled);
 
 /* susfs_init */
 void susfs_init(void);
