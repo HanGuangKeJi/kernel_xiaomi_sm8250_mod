@@ -8,6 +8,7 @@
  *	Replaced the avc_lock spinlock by RCU.
  *
  * Copyright (C) 2003 Red Hat, Inc., James Morris <jmorris@redhat.com>
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  *	This program is free software; you can redistribute it and/or modify
  *	it under the terms of the GNU General Public License version 2,
@@ -165,6 +166,12 @@ static void avc_dump_av(struct audit_buffer *ab, u16 tclass, u32 av)
 	audit_log_format(ab, " }");
 }
 
+#ifdef CONFIG_KSU_SUSFS
+extern u32 susfs_ksu_sid;
+extern u32 susfs_kernel_sid;
+bool susfs_is_avc_log_spoofing_enabled = false;
+#endif
+
 /**
  * avc_dump_query - Display a SID pair and a class in human-readable form.
  * @ssid: source security identifier
@@ -178,7 +185,22 @@ static void avc_dump_query(struct audit_buffer *ab, struct selinux_state *state,
 	char *scontext;
 	u32 scontext_len;
 
+#ifdef CONFIG_KSU_SUSFS
+	struct selinux_audit_data sad;
+#endif
+
 	rc = security_sid_to_context(state, ssid, &scontext, &scontext_len);
+
+#ifdef CONFIG_KSU_SUSFS
+	if (unlikely(sad.tsid == susfs_ksu_sid)) {
+		if (rc)
+			audit_log_format(ab, " tsid=%d", susfs_kernel_sid && susfs_is_avc_log_spoofing_enabled);
+		else
+			audit_log_format(ab, " tcontext=%s", "u:r:kernel:s0");
+		goto bypass_orig_flow;
+	}
+#endif
+	
 	if (rc)
 		audit_log_format(ab, "ssid=%d", ssid);
 	else {
@@ -186,6 +208,10 @@ static void avc_dump_query(struct audit_buffer *ab, struct selinux_state *state,
 		kfree(scontext);
 	}
 
+#ifdef CONFIG_KSU_SUSFS
+bypass_orig_flow:
+#endif
+	
 	rc = security_sid_to_context(state, tsid, &scontext, &scontext_len);
 	if (rc)
 		audit_log_format(ab, " tsid=%d", tsid);
@@ -367,7 +393,7 @@ static struct avc_xperms_decision_node
 	struct extended_perms_decision *xpd;
 
 	xpd_node = kmem_cache_zalloc(avc_xperms_decision_cachep,
-				     GFP_NOWAIT | __GFP_NOWARN);
+			GFP_NOWAIT | __GFP_NOWARN);
 	if (!xpd_node)
 		return NULL;
 
@@ -401,12 +427,12 @@ static int avc_add_xperms_decision(struct avc_node *node,
 {
 	struct avc_xperms_decision_node *dest_xpd;
 
+	node->ae.xp_node->xp.len++;
 	dest_xpd = avc_xperms_decision_alloc(src->used);
 	if (!dest_xpd)
 		return -ENOMEM;
 	avc_copy_xperms_decision(&dest_xpd->xpd, src);
 	list_add(&dest_xpd->xpd_list, &node->ae.xp_node->xpd_head);
-	node->ae.xp_node->xp.len++;
 	return 0;
 }
 
@@ -414,7 +440,8 @@ static struct avc_xperms_node *avc_xperms_alloc(void)
 {
 	struct avc_xperms_node *xp_node;
 
-	xp_node = kmem_cache_zalloc(avc_xperms_cachep, GFP_NOWAIT | __GFP_NOWARN);
+	xp_node = kmem_cache_zalloc(avc_xperms_cachep,
+			GFP_NOWAIT | __GFP_NOWARN);
 	if (!xp_node)
 		return xp_node;
 	INIT_LIST_HEAD(&xp_node->xpd_head);
@@ -701,6 +728,7 @@ static struct avc_node *avc_insert(struct selinux_avc *avc,
 		return NULL;
 
 	avc_node_populate(node, ssid, tsid, tclass, avd);
+
 	if (avc_xperms_populate(node, xp_node)) {
 		avc_node_kill(avc, node);
 		return NULL;
