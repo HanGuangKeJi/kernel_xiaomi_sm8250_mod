@@ -356,7 +356,7 @@ static inline struct vm_area_struct *binder_alloc_get_vma(
 extern struct task_struct *binder_buff_owner(struct binder_alloc *alloc);
 #endif
 
-static static inline bool line_is_frozen(struct task_struct *task)
+static inline bool line_is_frozen(struct task_struct *task)
 {
 	return frozen(task) || freezing(task);
 }
