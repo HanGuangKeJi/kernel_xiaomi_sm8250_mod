@@ -1269,52 +1269,6 @@ specific_send_sig_info(int sig, struct siginfo *info, struct task_struct *t)
 	return send_signal(sig, info, t, PIDTYPE_PID);
 }
 
-static inline bool line_is_frozen(struct task_struct *task)
-{
-	return frozen(task) || freezing(task);
-}
-
-static int send_netlink_message(char *msg, uint16_t len) {
-	struct sk_buff *skbuffer;
-	struct nlmsghdr *nlhdr;
-
-	skbuffer = nlmsg_new(len, GFP_ATOMIC);
-	if (!skbuffer) {
-		printk("netlink alloc failure.\n");
-		return -1;
-	}
-
-	nlhdr = nlmsg_put(skbuffer, 0, 0, rekernel_netlink_unit, len, 0);
-	if (!nlhdr) {
-		printk("nlmsg_put failaure.\n");
-		nlmsg_free(skbuffer);
-		return -1;
-	}
-
-	memcpy(nlmsg_data(nlhdr), msg, len);
-	return netlink_unicast(rekernel_netlink, skbuffer, REKERNEL_USER_PORT, MSG_DONTWAIT);
-}
-
-static int start_rekernel_server(void) {
-	extern struct net init_net;
-	struct netlink_kernel_cfg rekernel_cfg = {
-		.input = NULL,
-	};
-	if (rekernel_netlink != NULL)
-		return 0;
-	for (rekernel_netlink_unit = NETLINK_REKERNEL_MIN; rekernel_netlink_unit < NETLINK_REKERNEL_MAX; rekernel_netlink_unit++) {
-		rekernel_netlink = (struct sock *)netlink_kernel_create(&init_net, rekernel_netlink_unit, &rekernel_cfg);
-	if (rekernel_netlink != NULL)
-		break;
-	}
-	printk("Created Re:Kernel server! NETLINK UNIT: %d\n", rekernel_netlink_unit);
-	if (rekernel_netlink == NULL) {
-		printk("Failed to create Re:Kernel server!\n");
-		return -1;
-	}
-	return 0;
-}
-
 int do_send_sig_info(int sig, struct siginfo *info, struct task_struct *p,
 			enum pid_type type)
 {
