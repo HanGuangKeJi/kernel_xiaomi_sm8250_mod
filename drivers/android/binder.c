@@ -3206,10 +3206,10 @@ static void binder_transaction(struct binder_proc *proc,
  			if (target_proc
              	&& (NULL != target_proc->tsk)
              	&& (NULL != proc->tsk)
-             	&& (task_uid(target_proc->tsk).val <= REKERNEL_MAX_SYSTEM_UID)
+             	&& (task_uid(target_proc->tsk).val <= MAX_SYSTEM_UID)
              	&& (proc->pid != target_proc->pid)
              	&& line_is_frozen(target_proc->tsk)) {
-      				char binder_kmsg[REKERNEL_PACKET_SIZE];
+      				char binder_kmsg[PACKET_SIZE];
              		snprintf(binder_kmsg, sizeof(binder_kmsg), "type=Binder,bindertype=reply,oneway=0,from_pid=%d,from=%d,target_pid=%d,target=%d;", proc->pid, task_uid(proc->tsk).val, target_proc->pid, task_uid(target_proc->tsk).val);
           			send_netlink_message(binder_kmsg, strlen(binder_kmsg));
     			}
@@ -3288,10 +3288,10 @@ static void binder_transaction(struct binder_proc *proc,
  			if (target_proc
              	&& (NULL != target_proc->tsk)
              	&& (NULL != proc->tsk)
-             	&& (task_uid(target_proc->tsk).val > REKERNEL_MIN_USERAPP_UID)
+             	&& (task_uid(target_proc->tsk).val > MIN_USERAPP_UID)
              	&& (proc->pid != target_proc->pid)
              	&& line_is_frozen(target_proc->tsk)) {
-      				char binder_kmsg[REKERNEL_PACKET_SIZE];
+      				char binder_kmsg[PACKET_SIZE];
              		snprintf(binder_kmsg, sizeof(binder_kmsg), "type=Binder,bindertype=transaction,oneway=%d,from_pid=%d,from=%d,target_pid=%d,target=%d;",  tr->flags & TF_ONE_WAY, proc->pid, task_uid(proc->tsk).val, target_proc->pid, task_uid(target_proc->tsk).val);
           			send_netlink_message(binder_kmsg, strlen(binder_kmsg));
     			}
